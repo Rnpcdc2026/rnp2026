@@ -161,3 +161,4 @@ rnp2026/
 CDC Habitat — Direction du Patrimoine Groupe
 Référence : **DPG-SMO-2026-01**
 Contact : sophie.mondet@cdc-habitat.fr
+
