@@ -7,7 +7,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const FROM = process.env.EMAIL_FROM || 'Rencontre Patrimoine 2026 <onboarding@resend.dev>';
+const FROM = process.env.EMAIL_FROM || 'onboarding@resend.dev';
 const REPLY_TO = process.env.EMAIL_REPLY_TO;
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -30,11 +30,17 @@ function formatDeadline(d: string): string {
   });
 }
 
-// ─── Envoi confirmation après inscription ──────────────────────────
 export async function sendConfirmationEmail(params: {
   registrationId: string;
   eventId: string;
 }) {
+  console.log('[EMAIL] Starting sendConfirmationEmail', params);
+
+  if (!process.env.RESEND_API_KEY) {
+    console.error('[EMAIL] RESEND_API_KEY is missing!');
+    return;
+  }
+
   const supabase = createAdminClient();
 
   const { data: registration } = await supabase
@@ -42,14 +48,20 @@ export async function sendConfirmationEmail(params: {
     .select('*, visit:visits(title)')
     .eq('id', params.registrationId)
     .single();
-  if (!registration) return;
+  if (!registration) {
+    console.error('[EMAIL] Registration not found');
+    return;
+  }
 
   const { data: event } = await supabase
     .from('events')
     .select('*')
     .eq('id', params.eventId)
     .single();
-  if (!event) return;
+  if (!event) {
+    console.error('[EMAIL] Event not found');
+    return;
+  }
 
   const { data: nights } = await supabase
     .from('registration_nights')
@@ -64,7 +76,7 @@ export async function sendConfirmationEmail(params: {
         month: 'long',
       });
     })
-    .filter((x): x is string => x !== null);
+    .filter((x: string | null) => x !== null);
 
   const html = await render(
     ConfirmationEmail({
@@ -82,6 +94,8 @@ export async function sendConfirmationEmail(params: {
 
   const subject = `Inscription confirmée — ${event.title} · ${registration.reference}`;
 
+  console.log('[EMAIL] Sending to', registration.email, 'from', FROM);
+
   try {
     const result = await resend.emails.send({
       from: FROM,
@@ -90,6 +104,8 @@ export async function sendConfirmationEmail(params: {
       subject,
       html,
     });
+
+    console.log('[EMAIL] Resend response:', JSON.stringify(result));
 
     await supabase
       .from('registrations')
@@ -107,7 +123,7 @@ export async function sendConfirmationEmail(params: {
       error_message: result.error?.message || null,
     });
   } catch (err: any) {
-    console.error('sendConfirmationEmail error:', err);
+    console.error('[EMAIL] sendConfirmationEmail error:', err.message, err);
     await supabase.from('email_log').insert({
       event_id: params.eventId,
       registration_id: registration.id,
@@ -120,29 +136,17 @@ export async function sendConfirmationEmail(params: {
   }
 }
 
-// ─── Envoi invitation (campagne de masse) ──────────────────────────
 export async function sendInvitationEmail(params: {
   invitationId: string;
   eventId: string;
 }) {
   const supabase = createAdminClient();
-
-  const { data: invitation } = await supabase
-    .from('invitations')
-    .select('*')
-    .eq('id', params.invitationId)
-    .single();
+  const { data: invitation } = await supabase.from('invitations').select('*').eq('id', params.invitationId).single();
   if (!invitation) return { success: false, error: 'Invitation introuvable' };
-
-  const { data: event } = await supabase
-    .from('events')
-    .select('*')
-    .eq('id', params.eventId)
-    .single();
+  const { data: event } = await supabase.from('events').select('*').eq('id', params.eventId).single();
   if (!event) return { success: false, error: 'Événement introuvable' };
 
   const inviteUrl = `${APP_URL}/inscription?token=${invitation.invite_token}`;
-
   const html = await render(
     InvitationEmail({
       firstName: invitation.first_name,
@@ -154,23 +158,11 @@ export async function sendInvitationEmail(params: {
       contactEmail: event.contact_email || 'contact@cdc-habitat.fr',
     })
   );
-
   const subject = `Vous êtes invité·e — ${event.title}`;
 
   try {
-    const result = await resend.emails.send({
-      from: FROM,
-      to: invitation.email,
-      replyTo: REPLY_TO,
-      subject,
-      html,
-    });
-
-    await supabase
-      .from('invitations')
-      .update({ sent_at: new Date().toISOString() })
-      .eq('id', invitation.id);
-
+    const result = await resend.emails.send({ from: FROM, to: invitation.email, replyTo: REPLY_TO, subject, html });
+    await supabase.from('invitations').update({ sent_at: new Date().toISOString() }).eq('id', invitation.id);
     await supabase.from('email_log').insert({
       event_id: params.eventId,
       invitation_id: invitation.id,
@@ -181,38 +173,23 @@ export async function sendInvitationEmail(params: {
       status: result.error ? 'failed' : 'sent',
       error_message: result.error?.message || null,
     });
-
     return { success: !result.error, error: result.error?.message };
   } catch (err: any) {
     return { success: false, error: err.message };
   }
 }
 
-// ─── Envoi relance ─────────────────────────────────────────────────
 export async function sendReminderEmail(params: {
   invitationId: string;
   eventId: string;
 }) {
   const supabase = createAdminClient();
-
-  const { data: invitation } = await supabase
-    .from('invitations')
-    .select('*')
-    .eq('id', params.invitationId)
-    .single();
-  if (!invitation || invitation.registered) {
-    return { success: false, error: 'Déjà inscrit ou invitation introuvable' };
-  }
-
-  const { data: event } = await supabase
-    .from('events')
-    .select('*')
-    .eq('id', params.eventId)
-    .single();
+  const { data: invitation } = await supabase.from('invitations').select('*').eq('id', params.invitationId).single();
+  if (!invitation || invitation.registered) return { success: false, error: 'Déjà inscrit ou invitation introuvable' };
+  const { data: event } = await supabase.from('events').select('*').eq('id', params.eventId).single();
   if (!event) return { success: false, error: 'Événement introuvable' };
 
   const inviteUrl = `${APP_URL}/inscription?token=${invitation.invite_token}`;
-
   const html = await render(
     ReminderEmail({
       firstName: invitation.first_name,
@@ -223,26 +200,14 @@ export async function sendReminderEmail(params: {
       contactEmail: event.contact_email || 'contact@cdc-habitat.fr',
     })
   );
-
   const subject = `⏳ Relance — ${event.title}, clôture le ${formatDeadline(event.registration_deadline)}`;
 
   try {
-    const result = await resend.emails.send({
-      from: FROM,
-      to: invitation.email,
-      replyTo: REPLY_TO,
-      subject,
-      html,
-    });
-
-    await supabase
-      .from('invitations')
-      .update({
-        reminder_count: (invitation.reminder_count || 0) + 1,
-        last_reminder_at: new Date().toISOString(),
-      })
-      .eq('id', invitation.id);
-
+    const result = await resend.emails.send({ from: FROM, to: invitation.email, replyTo: REPLY_TO, subject, html });
+    await supabase.from('invitations').update({
+      reminder_count: (invitation.reminder_count || 0) + 1,
+      last_reminder_at: new Date().toISOString(),
+    }).eq('id', invitation.id);
     await supabase.from('email_log').insert({
       event_id: params.eventId,
       invitation_id: invitation.id,
@@ -253,7 +218,6 @@ export async function sendReminderEmail(params: {
       status: result.error ? 'failed' : 'sent',
       error_message: result.error?.message || null,
     });
-
     return { success: !result.error, error: result.error?.message };
   } catch (err: any) {
     return { success: false, error: err.message };
