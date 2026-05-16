@@ -41,7 +41,6 @@ export default function ConfirmationEmail({
       <Preview>Votre inscription à {eventTitle} est confirmée — réf. {reference}</Preview>
       <Body style={body}>
         <Container style={container}>
-          {/* Header avec barre rouge CDC */}
           <Section style={headerBar} />
 
           <Section style={header}>
@@ -104,28 +103,65 @@ export default function ConfirmationEmail({
 
 function Row({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', borderBottom: '1px solid #D6D8D9' }}>
-      <tr>
-        <td style={{ padding: '12px 0', fontFamily: 'Arial, sans-serif', fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#828485', fontWeight: 600, width: 140 }}>
-          {label}
-        </td>
-        <td style={{ padding: '12px 0', fontFamily: 'Arial, sans-serif', fontSize: 15, fontWeight: 600, color: accent ? '#E30613' : '#1d1d1b', textAlign: 'right' }}>
-          {value}
-        </td>
-      </tr>
+    <table
+      width="100%"
+      cellPadding={0}
+      cellSpacing={0}
+      style={{
+        width: '100%',
+        borderCollapse: 'collapse',
+        borderBottom: '1px solid #D6D8D9',
+        tableLayout: 'fixed',
+      }}
+    >
+      <tbody>
+        <tr>
+          <td
+            style={{
+              padding: '14px 0',
+              fontFamily: 'Arial, sans-serif',
+              fontSize: 11,
+              letterSpacing: 1,
+              textTransform: 'uppercase',
+              color: '#828485',
+              fontWeight: 600,
+              width: '35%',
+              verticalAlign: 'top',
+              wordBreak: 'break-word',
+            }}
+          >
+            {label}
+          </td>
+          <td
+            style={{
+              padding: '14px 0',
+              fontFamily: 'Arial, sans-serif',
+              fontSize: 14,
+              fontWeight: 700,
+              color: accent ? '#E30613' : '#1d1d1b',
+              textAlign: 'right',
+              width: '65%',
+              verticalAlign: 'top',
+              wordBreak: 'break-word',
+            }}
+          >
+            {value}
+          </td>
+        </tr>
+      </tbody>
     </table>
   );
 }
 
 const body = { backgroundColor: '#ECECEC', fontFamily: 'Arial, Helvetica, sans-serif', margin: 0, padding: '20px 0' };
-const container = { maxWidth: 580, margin: '0 auto', backgroundColor: '#FFFFFF', borderRadius: 4, overflow: 'hidden' };
+const container = { maxWidth: 600, margin: '0 auto', backgroundColor: '#FFFFFF', borderRadius: 4, overflow: 'hidden' };
 const headerBar = { height: 4, backgroundColor: '#E30613', margin: 0 };
 const header = { padding: '32px 32px 24px', borderBottom: '1px solid #D6D8D9', marginBottom: 0 };
 const brandRed = { fontFamily: 'Arial Black, Arial, sans-serif', fontWeight: 900, fontSize: 20, color: '#E30613', margin: 0, letterSpacing: '-0.02em' };
 const brandMeta = { fontFamily: 'Arial, sans-serif', fontSize: 12, color: '#828485', margin: '6px 0 0 0', fontWeight: 500 };
 const hero = { padding: '32px 32px 8px' };
 const eyebrow = { fontFamily: 'Arial, sans-serif', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' as const, color: '#E30613', fontWeight: 700, margin: 0 };
-const h1 = { fontFamily: 'Arial Black, Arial, sans-serif', fontWeight: 800, fontSize: 28, lineHeight: 1.15, color: '#1d1d1b', margin: '16px 0 16px 0', letterSpacing: '-0.02em' };
+const h1 = { fontFamily: 'Arial Black, Arial, sans-serif', fontWeight: 800, fontSize: 26, lineHeight: 1.2, color: '#1d1d1b', margin: '16px 0 16px 0', letterSpacing: '-0.02em' };
 const lede = { fontFamily: 'Arial, sans-serif', fontSize: 15, lineHeight: 1.6, color: '#4C4C4B', margin: 0 };
 const recap = { backgroundColor: '#ECECEC', padding: 24, margin: '24px 32px', borderRadius: 4, borderLeft: '3px solid #E30613' };
 const recapTitle = { fontFamily: 'Arial, sans-serif', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' as const, color: '#828485', fontWeight: 700, margin: '0 0 12px 0' };
