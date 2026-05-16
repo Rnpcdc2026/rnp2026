@@ -1,5 +1,6 @@
 import {
   Body,
+  Button,
   Container,
   Head,
   Heading,
@@ -38,7 +39,7 @@ export default function ConfirmationEmail({
   return (
     <Html>
       <Head />
-      <Preview>Votre inscription a {eventTitle} est confirmee - ref. {reference}</Preview>
+      <Preview>Votre inscription à {eventTitle} est confirmée — réf. {reference}</Preview>
       <Body style={body}>
         <Container style={container}>
           <Section style={headerBar} />
@@ -49,26 +50,33 @@ export default function ConfirmationEmail({
           </Section>
 
           <Section style={hero}>
-            <Text style={eyebrow}>INSCRIPTION CONFIRMEE</Text>
+            <Text style={eyebrow}>● Inscription confirmée</Text>
             <Heading style={h1}>
-              Bonjour {firstName}, a tres bientot a Lyon.
+              Bonjour {firstName}, à très bientôt à Lyon.
             </Heading>
             <Text style={lede}>
-              Votre inscription a <strong>{eventTitle}</strong> est bien enregistree. Vous recevrez
-              le programme detaille et les informations pratiques debut septembre.
+              Votre inscription à <strong>{eventTitle}</strong> est bien enregistrée. Nous sommes ravis
+              de vous compter parmi nous pour ces deux journées d&apos;échanges et de rencontres. Vous
+              recevrez le programme détaillé et les informations pratiques début septembre.
             </Text>
           </Section>
 
           <Section style={recap}>
-            <Text style={recapTitle}>RECAPITULATIF</Text>
-            <Row label="Reference" value={reference} accent />
+            <Text style={recapTitle}>RÉCAPITULATIF</Text>
+            <Row label="Référence" value={reference} accent />
             <Row label="Dates" value={eventDates} />
             <Row label="Lieu" value={eventLocation} />
             <Row label="Visite" value={visitTitle || 'Aucune'} />
             <Row
-              label="Nuitees"
+              label="Nuitées"
               value={nightDates.length === 0 ? 'Aucune' : nightDates.join(' & ')}
             />
+          </Section>
+
+          <Section style={ctaWrapper}>
+            <Button href={appUrl} style={cta}>
+              Voir le programme et les infos pratiques
+            </Button>
           </Section>
 
           <Hr style={hr} />
@@ -77,23 +85,27 @@ export default function ConfirmationEmail({
             <Text style={paragraph}>
               <strong>Besoin de modifier votre inscription ?</strong>
               <br />
-              Ecrivez-nous a <Link href={`mailto:${contactEmail}`} style={link}>{contactEmail}</Link> en
-              precisant votre reference d'inscription.
-            </Text>
-            <Text style={paragraph}>
-              <strong>Plus d'informations sur l'evenement :</strong>
-              <br />
-              <Link href={appUrl} style={link}>{appUrl}</Link>
+              Écrivez-nous à <Link href={`mailto:${contactEmail}`} style={link}>{contactEmail}</Link>{' '}
+              en précisant votre référence d&apos;inscription. Notre équipe vous répondra dans les
+              meilleurs délais.
             </Text>
           </Section>
 
           <Hr style={hr} />
 
+          <Section style={signature}>
+            <Text style={signatureText}>
+              À très bientôt,
+              <br />
+              <strong>L&apos;équipe Rencontre Nationale Patrimoine 2026</strong>
+            </Text>
+          </Section>
+
           <Section style={footer}>
             <Text style={footerText}>
-              CDC Habitat - GIE Expertise &amp; Support - Direction du Patrimoine Groupe
+              CDC Habitat — GIE Expertise &amp; Support · Direction du Patrimoine Groupe
             </Text>
-            <Text style={footerText}>Reference dossier : DPG-SMO-2026-01</Text>
+            <Text style={footerText}>Référence dossier : DPG-SMO-2026-01</Text>
           </Section>
         </Container>
       </Body>
@@ -150,8 +162,22 @@ const h1 = { fontFamily: 'Arial Black, Arial, sans-serif', fontWeight: 800, font
 const lede = { fontFamily: 'Arial, sans-serif', fontSize: 15, lineHeight: 1.6, color: '#4C4C4B', margin: 0 };
 const recap = { backgroundColor: '#ECECEC', padding: '20px 24px', margin: '24px 24px', borderRadius: 4, borderLeft: '3px solid #E30613' };
 const recapTitle = { fontFamily: 'Arial, sans-serif', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' as const, color: '#828485', fontWeight: 700, margin: '0 0 8px 0' };
+const ctaWrapper = { padding: '8px 32px 24px', textAlign: 'center' as const };
+const cta = {
+  backgroundColor: '#E30613',
+  color: '#FFFFFF',
+  fontFamily: 'Arial, sans-serif',
+  fontWeight: 700,
+  fontSize: 15,
+  textDecoration: 'none',
+  padding: '14px 28px',
+  borderRadius: 4,
+  display: 'inline-block',
+};
 const hr = { borderColor: '#D6D8D9', margin: '24px 32px' };
 const paragraph = { fontFamily: 'Arial, sans-serif', fontSize: 14, lineHeight: 1.6, color: '#4C4C4B', padding: '0 32px', marginBottom: 16 };
 const link = { color: '#E30613', textDecoration: 'underline', fontWeight: 600 };
+const signature = { padding: '0 32px 16px' };
+const signatureText = { fontFamily: 'Arial, sans-serif', fontSize: 14, lineHeight: 1.6, color: '#4C4C4B', margin: 0 };
 const footer = { padding: '8px 32px 32px' };
 const footerText = { fontFamily: 'Arial, sans-serif', fontSize: 12, color: '#828485', margin: '4px 0' };
