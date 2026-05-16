@@ -44,7 +44,7 @@ export default function ConfirmationEmail({
           <Section style={headerBar} />
 
           <Section style={header}>
-            <Text style={brandRed}>cdc <span style={{color: '#1d1d1b'}}>habitat</span></Text>
+            <Text style={brandRed}>cdc <span style={{ color: '#1d1d1b' }}>habitat</span></Text>
             <Text style={brandMeta}>Rencontre Nationale Patrimoine 2026</Text>
           </Section>
 
@@ -103,15 +103,47 @@ export default function ConfirmationEmail({
 
 function Row({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', borderBottom: '1px solid #D6D8D9' }}>
-      <tr>
-        <td style={{ padding: '12px 0', fontFamily: 'Arial, sans-serif', fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#828485', fontWeight: 600, width: 140 }}>
-          {label}
-        </td>
-        <td style={{ padding: '12px 0', fontFamily: 'Arial, sans-serif', fontSize: 15, fontWeight: 600, color: accent ? '#E30613' : '#1d1d1b', textAlign: 'right' }}>
-          {value}
-        </td>
-      </tr>
+    <table
+      style={{
+        width: '100%',
+        borderCollapse: 'collapse',
+        borderBottom: '1px solid #D6D8D9',
+        tableLayout: 'fixed',
+      }}
+    >
+      <tbody>
+        <tr>
+          <td
+            style={{
+              padding: '12px 8px 12px 0',
+              fontFamily: 'Arial, sans-serif',
+              fontSize: 11,
+              letterSpacing: 1.5,
+              textTransform: 'uppercase',
+              color: '#828485',
+              fontWeight: 600,
+              width: 90,
+              verticalAlign: 'top',
+            }}
+          >
+            {label}
+          </td>
+          <td
+            style={{
+              padding: '12px 0',
+              fontFamily: 'Arial, sans-serif',
+              fontSize: 15,
+              fontWeight: 600,
+              color: accent ? '#E30613' : '#1d1d1b',
+              textAlign: 'right',
+              wordBreak: 'break-word',
+              verticalAlign: 'top',
+            }}
+          >
+            {value}
+          </td>
+        </tr>
+      </tbody>
     </table>
   );
 }
