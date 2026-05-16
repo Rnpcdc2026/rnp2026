@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse, after } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendConfirmationEmail } from '@/lib/email';
 
@@ -152,29 +152,5 @@ export async function POST(req: NextRequest) {
       .eq('event_id', body.eventId)
       .eq('email', body.email.toLowerCase());
 
-    // ─── Email de confirmation : programmé APRÈS la réponse, sans tuer la fonction ───
-    // after() est l'API officielle Next.js 14+ pour les tâches post-réponse sur Vercel.
-    after(async () => {
-      try {
-        await sendConfirmationEmail({
-          registrationId: registration.id,
-          eventId: body.eventId,
-        });
-      } catch (err) {
-        console.error('[REGISTER] after() email task failed:', err);
-      }
-    });
-
-    return NextResponse.json({
-      success: true,
-      reference,
-      registrationId: registration.id,
-    });
-  } catch (error) {
-    console.error('Register route error:', error);
-    return NextResponse.json(
-      { error: 'Erreur serveur. Merci de réessayer.' },
-      { status: 500 }
-    );
-  }
-}
+    // ─── Email de confirmation : await direct (bloquant mais fiable sur Vercel serverless) ───
+    // On l'enveloppe dans un try/catch pour que même
