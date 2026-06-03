@@ -369,19 +369,30 @@ export default function RegistrationForm({
                         update('noVisit', false);
                       }}
                     >
-                      <div className={styles.cardCheck}>
-                        <svg viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2">
-                          <path d="M2 6l3 3 5-6" />
-                        </svg>
+                      <div className={styles.cardImage}>
+                        <Image
+                          src={`/visits/${v.code}.jpg`}
+                          alt={v.title}
+                          fill
+                          style={{ objectFit: 'cover' }}
+                          sizes="(max-width: 900px) calc(100vw - 48px), 350px"
+                        />
                       </div>
-                      <span className={styles.cardTag}>{v.slot_label}</span>
-                      <h3>{v.title}</h3>
-                      <div className={styles.cardMeta}>
-                        {isFull
-                          ? 'Complet'
-                          : `${remaining} place${remaining > 1 ? 's' : ''} restante${remaining > 1 ? 's' : ''} · ${v.capacity} max`}
+                      <div className={styles.cardBody}>
+                        <div className={styles.cardCheck}>
+                          <svg viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2">
+                            <path d="M2 6l3 3 5-6" />
+                          </svg>
+                        </div>
+                        <span className={styles.cardTag}>{v.slot_label}</span>
+                        <h3>{v.title}</h3>
+                        <div className={styles.cardMeta}>
+                          {isFull
+                            ? 'Complet'
+                            : `${remaining} place${remaining > 1 ? 's' : ''} restante${remaining > 1 ? 's' : ''} · ${v.capacity} max`}
+                        </div>
+                        {v.description && <p className={styles.cardDesc}>{v.description}</p>}
                       </div>
-                      {v.description && <p className={styles.cardDesc}>{v.description}</p>}
                     </div>
                   );
                 })}
@@ -392,17 +403,19 @@ export default function RegistrationForm({
                     update('visitId', null);
                   }}
                 >
-                  <div className={styles.cardCheck}>
-                    <svg viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2">
-                      <path d="M2 6l3 3 5-6" />
-                    </svg>
+                  <div className={styles.cardBody}>
+                    <div className={styles.cardCheck}>
+                      <svg viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2">
+                        <path d="M2 6l3 3 5-6" />
+                      </svg>
+                    </div>
+                    <span className={styles.cardTag}>Aucune</span>
+                    <h3>Je ne participerai pas aux visites</h3>
+                    <div className={styles.cardMeta}>—</div>
+                    <p className={styles.cardDesc}>
+                      Vous ne pourrez pas vous rendre disponible sur les créneaux proposés.
+                    </p>
                   </div>
-                  <span className={styles.cardTag}>Aucune</span>
-                  <h3>Je ne participerai pas aux visites</h3>
-                  <div className={styles.cardMeta}>—</div>
-                  <p className={styles.cardDesc}>
-                    Vous ne pourrez pas vous rendre disponible sur les créneaux proposés.
-                  </p>
                 </div>
               </div>
             </div>
