@@ -1,7 +1,7 @@
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
-export async function middleware(request: NextRequest) {
+async function supabaseAdminAuth(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -12,7 +12,7 @@ export async function middleware(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: Array<{ name: string; value: string; options?: CookieOptions }>) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
@@ -29,11 +29,9 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Protection des routes admin (sauf /admin/login)
-  const isAdminRoute = request.nextUrl.pathname.startsWith('/admin');
   const isLoginPage = request.nextUrl.pathname === '/admin/login';
 
-  if (isAdminRoute && !isLoginPage && !user) {
+  if (!isLoginPage && !user) {
     const url = request.nextUrl.clone();
     url.pathname = '/admin/login';
     return NextResponse.redirect(url);
@@ -48,8 +46,33 @@ export async function middleware(request: NextRequest) {
   return response;
 }
 
+function cookieAccessGuard(request: NextRequest) {
+  const hasAccess = request.cookies.get('rnp_access')?.value === 'ok';
+  if (hasAccess) return NextResponse.next({ request });
+
+  const from = request.nextUrl.pathname + request.nextUrl.search;
+  const url = request.nextUrl.clone();
+  url.pathname = '/login';
+  url.search = `?from=${encodeURIComponent(from)}`;
+  return NextResponse.redirect(url);
+}
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  if (pathname.startsWith('/admin')) {
+    return supabaseAdminAuth(request);
+  }
+
+  if (pathname === '/' || pathname.startsWith('/inscription')) {
+    return cookieAccessGuard(request);
+  }
+
+  return NextResponse.next();
+}
+
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|login|.*\\..*).*)' ,
   ],
 };
