@@ -71,6 +71,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const { data: invitation } = await supabase
+      .from('invitations')
+      .select('registered')
+      .eq('event_id', body.eventId)
+      .eq('email', body.email.toLowerCase())
+      .maybeSingle();
+
+    if (!invitation) {
+      return NextResponse.json(
+        { error: "Cette adresse n'est pas autorisée. Si vous êtes invité(e), contactez rnpcdc@gmail.com." },
+        { status: 403 }
+      );
+    }
+
+    if (invitation.registered) {
+      return NextResponse.json(
+        { error: 'Vous êtes déjà inscrit(e). Pour modifier votre inscription, contactez rnpcdc@gmail.com.' },
+        { status: 409 }
+      );
+    }
+
     if (body.visitId) {
       const { data: visit } = await supabase
         .from('visits')
@@ -137,11 +158,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await supabase
+    const { error: invUpdateErr } = await supabase
       .from('invitations')
       .update({ registered: true })
       .eq('event_id', body.eventId)
       .eq('email', body.email.toLowerCase());
+    if (invUpdateErr) {
+      console.error('[REGISTER] Failed to update invitation registered flag:', invUpdateErr.message);
+    }
 
     try {
       await sendConfirmationEmail({

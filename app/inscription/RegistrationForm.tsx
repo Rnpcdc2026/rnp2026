@@ -1,10 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import type { Event, Visit, AccommodationNight, Workshop, Entity } from '@/lib/types';
 import styles from './inscription.module.css';
+
+type Invitee = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  entity: string;
+};
 
 type Props = {
   event: Event;
@@ -62,19 +70,55 @@ export default function RegistrationForm({
 }: Props) {
   const router = useRouter();
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState<FormData>({
-    ...initialFormData,
-    firstName: prefill?.firstName || '',
-    lastName: prefill?.lastName || '',
-    email: prefill?.email || '',
-    entity: prefill?.entity || '',
-  });
+  const [form, setForm] = useState<FormData>(initialFormData);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reference, setReference] = useState<string | null>(null);
+  const [invitees, setInvitees] = useState<Invitee[]>([]);
+  const [inviteesLoading, setInviteesLoading] = useState(true);
+  const [inviteesError, setInviteesError] = useState<string | null>(null);
+  const [selectedInviteeId, setSelectedInviteeId] = useState('');
+  const [showHelpMessage, setShowHelpMessage] = useState(false);
 
   const update = <K extends keyof FormData>(key: K, value: FormData[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  useEffect(() => {
+    fetch('/api/invitees')
+      .then((res) => {
+        if (!res.ok) throw new Error('Fetch failed');
+        return res.json();
+      })
+      .then((data: Invitee[]) => {
+        setInvitees(data);
+        setInviteesLoading(false);
+      })
+      .catch(() => {
+        setInviteesError(
+          'Impossible de charger la liste des invités. Rafraîchissez la page ou contactez rnpcdc@gmail.com.'
+        );
+        setInviteesLoading(false);
+      });
+  }, []);
+
+  const handleInviteeSelect = (id: string) => {
+    setSelectedInviteeId(id);
+    setShowHelpMessage(false);
+    if (!id) {
+      update('firstName', '');
+      update('lastName', '');
+      update('email', '');
+      update('entity', '');
+      return;
+    }
+    const inv = invitees.find((i) => i.id === id);
+    if (inv) {
+      update('firstName', inv.first_name);
+      update('lastName', inv.last_name);
+      update('email', inv.email);
+      update('entity', inv.entity);
+    }
   };
 
   const formatDateFr = (dateStr: string) => {
@@ -92,12 +136,8 @@ export default function RegistrationForm({
   const nextStep = (n: number) => {
     setError(null);
     if (n === 2) {
-      if (!form.firstName || !form.lastName || !form.email || !form.entity) {
-        setError('Merci de renseigner les champs obligatoires (prénom, nom, email, entité).');
-        return;
-      }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
-        setError('Email invalide.');
+      if (!selectedInviteeId) {
+        setError('Merci de sélectionner votre nom dans la liste ci-dessus.');
         return;
       }
     }
@@ -234,42 +274,112 @@ export default function RegistrationForm({
                 <h2>Quelques mots sur vous.</h2>
                 <p>
                   Ces informations nous permettent de préparer votre venue et de personnaliser
-                  votre badge d'accès.
+                  votre badge d&apos;accès.
                 </p>
               </div>
 
               <form className={styles.form} onSubmit={(e) => e.preventDefault()}>
+
+                {/* Dropdown invité */}
+                <div className={`${styles.fieldGroup} ${styles.full}`}>
+                  <div className={styles.field}>
+                    <label>Sélectionnez votre nom *</label>
+                    <select
+                      value={selectedInviteeId}
+                      onChange={(e) => handleInviteeSelect(e.target.value)}
+                      disabled={inviteesLoading || !!inviteesError}
+                    >
+                      {inviteesLoading ? (
+                        <option value="" disabled>Chargement de la liste…</option>
+                      ) : (
+                        <>
+                          <option value="">— Sélectionnez votre nom —</option>
+                          {invitees.map((inv) => (
+                            <option key={inv.id} value={inv.id}>
+                              {inv.first_name} {inv.last_name} — {inv.entity}
+                            </option>
+                          ))}
+                        </>
+                      )}
+                    </select>
+
+                    {inviteesError && (
+                      <p style={{ fontSize: 13, color: '#c0392b', marginTop: 6 }}>
+                        {inviteesError}
+                      </p>
+                    )}
+
+                    {!inviteesError && !inviteesLoading && (
+                      <div style={{ marginTop: 8 }}>
+                        <button
+                          type="button"
+                          onClick={() => setShowHelpMessage((v) => !v)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            fontSize: 13,
+                            color: '#888',
+                            cursor: 'pointer',
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          Mon nom n&apos;apparaît pas dans la liste
+                        </button>
+                        {showHelpMessage && (
+                          <div
+                            style={{
+                              marginTop: 8,
+                              padding: '10px 14px',
+                              backgroundColor: '#f5f5f5',
+                              borderRadius: 6,
+                              fontSize: 13,
+                              color: '#4C4C4B',
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            Si vous êtes invité(e) et que votre nom n&apos;apparaît pas dans
+                            la liste, merci de contacter l&apos;organisation à{' '}
+                            <a href="mailto:rnpcdc@gmail.com" style={{ color: '#4C4C4B' }}>
+                              rnpcdc@gmail.com
+                            </a>
+                            .
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Champs identité — verrouillés, préremplis par le dropdown */}
                 <div className={styles.fieldGroup}>
                   <div className={styles.field}>
-                    <label>Prénom *</label>
+                    <label>Prénom</label>
                     <input
                       type="text"
                       value={form.firstName}
-                      onChange={(e) => update('firstName', e.target.value)}
-                      placeholder="Marie"
-                      required
+                      readOnly
+                      style={selectedInviteeId ? { backgroundColor: '#f5f5f5', cursor: 'not-allowed' } : {}}
                     />
                   </div>
                   <div className={styles.field}>
-                    <label>Nom *</label>
+                    <label>Nom</label>
                     <input
                       type="text"
                       value={form.lastName}
-                      onChange={(e) => update('lastName', e.target.value)}
-                      placeholder="Dupont"
-                      required
+                      readOnly
+                      style={selectedInviteeId ? { backgroundColor: '#f5f5f5', cursor: 'not-allowed' } : {}}
                     />
                   </div>
                 </div>
                 <div className={styles.fieldGroup}>
                   <div className={styles.field}>
-                    <label>Email professionnel *</label>
+                    <label>Email professionnel</label>
                     <input
                       type="email"
                       value={form.email}
-                      onChange={(e) => update('email', e.target.value)}
-                      placeholder="prenom.nom@cdc-habitat.fr"
-                      required
+                      readOnly
+                      style={selectedInviteeId ? { backgroundColor: '#f5f5f5', cursor: 'not-allowed' } : {}}
                     />
                   </div>
                   <div className={styles.field}>
@@ -284,19 +394,13 @@ export default function RegistrationForm({
                 </div>
                 <div className={styles.fieldGroup}>
                   <div className={styles.field}>
-                    <label>Entité / Filiale *</label>
-                    <select
+                    <label>Entité / Filiale</label>
+                    <input
+                      type="text"
                       value={form.entity}
-                      onChange={(e) => update('entity', e.target.value)}
-                      required
-                    >
-                      <option value="">Sélectionner...</option>
-                      {entities.map((ent) => (
-                        <option key={ent.id} value={ent.name}>
-                          {ent.name}
-                        </option>
-                      ))}
-                    </select>
+                      readOnly
+                      style={selectedInviteeId ? { backgroundColor: '#f5f5f5', cursor: 'not-allowed' } : {}}
+                    />
                   </div>
                   <div className={styles.field}>
                     <label>Fonction</label>
