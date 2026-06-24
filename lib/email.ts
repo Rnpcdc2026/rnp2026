@@ -11,6 +11,24 @@ const FROM = process.env.EMAIL_FROM || 'onboarding@resend.dev';
 const REPLY_TO = process.env.EMAIL_REPLY_TO;
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
+const DEV_EMAIL = process.env.RESEND_DEV_EMAIL;
+const IS_DEV = process.env.NODE_ENV !== 'production';
+
+const PRESENCE_LABELS: Record<string, string> = {
+  attends_thursday_morning: 'Jeudi matin',
+  attends_thursday_afternoon: 'Jeudi après-midi',
+  attends_thursday_evening: 'Jeudi soir',
+  attends_friday_morning: 'Vendredi matin',
+  attends_friday_afternoon: 'Vendredi après-midi',
+};
+
+const TRANSPORT_LABELS: Record<string, string> = {
+  train: 'Train',
+  plane: 'Avion',
+  car: 'Voiture personnelle',
+  public_or_walk: 'Transport en commun / à pied',
+};
+
 function formatEventDates(start: string, end: string): string {
   const s = new Date(start);
   const e = new Date(end);
@@ -47,10 +65,10 @@ export async function sendConfirmationEmail(params: {
   let subject = '';
 
   try {
-    console.log('[EMAIL] Step 1/5 — Loading registration');
+    console.log('[EMAIL] Step 1/6 — Loading registration + hotel');
     const { data: reg, error: regErr } = await supabase
       .from('registrations')
-      .select('*, visit:visits(title)')
+      .select('*, hotel:hotels(title)')
       .eq('id', params.registrationId)
       .single();
     if (regErr) {
@@ -63,7 +81,7 @@ export async function sendConfirmationEmail(params: {
     }
     registration = reg;
 
-    console.log('[EMAIL] Step 2/5 — Loading event');
+    console.log('[EMAIL] Step 2/6 — Loading event');
     const { data: ev, error: evErr } = await supabase
       .from('events')
       .select('*')
@@ -79,23 +97,42 @@ export async function sendConfirmationEmail(params: {
     }
     event = ev;
 
-    console.log('[EMAIL] Step 3/5 — Loading nights');
-    const { data: nights } = await supabase
-      .from('registration_nights')
-      .select('night:accommodation_nights(night_date)')
+    console.log('[EMAIL] Step 3/6 — Loading visits');
+    const { data: rvs } = await supabase
+      .from('registration_visits')
+      .select('visit:visits(title, slot_label)')
       .eq('registration_id', registration.id);
 
-    const nightDates = (nights || [])
-      .map((n: any) => {
-        if (!n.night?.night_date) return null;
-        return new Date(n.night.night_date).toLocaleDateString('fr-FR', {
-          day: 'numeric',
-          month: 'long',
-        });
-      })
-      .filter((x: string | null) => x !== null) as string[];
+    const allVisits = ((rvs || []) as any[]).map((rv) => rv.visit).filter(Boolean);
+    const thursdayVisit: string | null =
+      allVisits.find((v: any) => v.slot_label?.toLowerCase().includes('jeudi'))?.title ?? null;
+    const fridayVisit: string | null =
+      allVisits.find((v: any) => v.slot_label?.toLowerCase().includes('vendredi'))?.title ?? null;
 
-    console.log('[EMAIL] Step 4/5 — Rendering React-Email template');
+    console.log('[EMAIL] Step 4/6 — Loading workshops');
+    const { data: rws } = await supabase
+      .from('registration_workshops')
+      .select('workshop:workshops(title, display_order)')
+      .eq('registration_id', registration.id);
+
+    const workshops: string[] = ((rws || []) as any[])
+      .map((rw) => rw.workshop)
+      .filter(Boolean)
+      .sort((a: any, b: any) => a.display_order - b.display_order)
+      .map((w: any) => w.title);
+
+    console.log('[EMAIL] Step 5/6 — Building presenceSlots + labels');
+    const presenceSlots = Object.entries(PRESENCE_LABELS)
+      .filter(([key]) => (registration as any)[key] === true)
+      .map(([, label]) => label);
+
+    const hotelName = (registration.hotel as any)?.title ?? 'Non renseigné';
+    const transportLabel =
+      TRANSPORT_LABELS[(registration as any).transport_mode] ??
+      (registration as any).transport_mode ??
+      'Non renseigné';
+
+    console.log('[EMAIL] Step 6/6 — Rendering React-Email template');
     const html = await render(
       ConfirmationEmail({
         firstName: registration.first_name,
@@ -103,8 +140,13 @@ export async function sendConfirmationEmail(params: {
         eventTitle: event.title,
         eventDates: formatEventDates(event.start_date, event.end_date),
         eventLocation: event.location || 'Lyon',
-        visitTitle: (registration.visit as any)?.title || null,
-        nightDates,
+        presenceSlots,
+        thursdayVisit,
+        workshops,
+        fridayVisit,
+        hotelName,
+        transportLabel,
+        diet: registration.diet || null,
         contactEmail: event.contact_email || 'contact@cdc-habitat.fr',
         appUrl: APP_URL,
       })
@@ -113,12 +155,21 @@ export async function sendConfirmationEmail(params: {
 
     subject = `Inscription confirmée — ${event.title} · ${registration.reference}`;
 
-    console.log('[EMAIL] Step 5/5 — Sending via Resend to', registration.email, 'from', FROM);
+    const toEmail = IS_DEV && DEV_EMAIL ? DEV_EMAIL : registration.email;
+    if (IS_DEV && DEV_EMAIL && DEV_EMAIL !== registration.email) {
+      console.log(`[EMAIL] DEV MODE: overriding ${registration.email} → ${DEV_EMAIL}`);
+    }
+    console.log('[EMAIL] Sending via Resend to', toEmail, 'from', FROM);
+
+    let finalSubject = subject;
+    if (IS_DEV && DEV_EMAIL && DEV_EMAIL !== registration.email) {
+      finalSubject = `[DEV → ${registration.email}] ${subject}`;
+    }
     const result = await resend.emails.send({
       from: FROM,
-      to: registration.email,
+      to: toEmail,
       replyTo: REPLY_TO,
-      subject,
+      subject: finalSubject,
       html,
     });
 

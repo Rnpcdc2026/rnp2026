@@ -20,8 +20,13 @@ type Props = {
   eventTitle: string;
   eventDates: string;
   eventLocation: string;
-  visitTitle?: string | null;
-  nightDates?: string[];
+  presenceSlots: string[];
+  thursdayVisit?: string | null;
+  workshops?: string[];
+  fridayVisit?: string | null;
+  hotelName: string;
+  transportLabel: string;
+  diet?: string | null;
   contactEmail: string;
   appUrl: string;
 };
@@ -32,12 +37,17 @@ export default function ConfirmationEmail({
   eventTitle,
   eventDates,
   eventLocation,
-  visitTitle,
-  nightDates = [],
+  presenceSlots,
+  thursdayVisit,
+  workshops = [],
+  fridayVisit,
+  hotelName,
+  transportLabel,
+  diet,
   contactEmail,
   appUrl,
 }: Props) {
-  const logoUrl = `${appUrl.replace(/\/$/, '')}/cdc-habitat-logo.jpg`;
+  const logoUrl = 'https://rnp2026.vercel.app/cdc-habitat-logo.jpg';
 
   return (
     <Html>
@@ -74,11 +84,13 @@ export default function ConfirmationEmail({
             <Row label="Référence" value={reference} accent />
             <Row label="Dates" value={eventDates} />
             <Row label="Lieu" value={eventLocation} />
-            <Row label="Visite" value={visitTitle || 'Aucune'} />
-            <Row
-              label="Nuitées"
-              value={nightDates.length === 0 ? 'Aucune' : nightDates.join(' & ')}
-            />
+            <Row label="Présence" value={presenceSlots.join(', ') || 'Aucune'} />
+            {thursdayVisit && <Row label="Visite du jeudi" value={thursdayVisit} />}
+            {workshops.length > 0 && <RowList label="Ateliers du vendredi matin" items={workshops} />}
+            {fridayVisit && <Row label="Visite du vendredi" value={fridayVisit} />}
+            <Row label="Hébergement" value={hotelName} />
+            <Row label="Transport" value={transportLabel} />
+            {diet && <Row label="Régime alimentaire" value={diet} />}
           </Section>
 
           <Section style={ctaWrapper}>
@@ -118,6 +130,40 @@ export default function ConfirmationEmail({
         </Container>
       </Body>
     </Html>
+  );
+}
+
+function RowList({ label, items }: { label: string; items: string[] }) {
+  return (
+    <div style={{ padding: '14px 0', borderBottom: '1px solid #D6D8D9' }}>
+      <div
+        style={{
+          fontFamily: 'Arial, sans-serif',
+          fontSize: 11,
+          letterSpacing: 1.5,
+          textTransform: 'uppercase',
+          color: '#828485',
+          fontWeight: 600,
+          marginBottom: 4,
+        }}
+      >
+        {label}
+      </div>
+      {items.map((item, i) => (
+        <div
+          key={i}
+          style={{
+            fontFamily: 'Arial, sans-serif',
+            fontSize: 17,
+            fontWeight: 700,
+            color: '#1d1d1b',
+            lineHeight: 1.3,
+          }}
+        >
+          {item}
+        </div>
+      ))}
+    </div>
   );
 }
 

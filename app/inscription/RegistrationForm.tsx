@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import type { Event, Visit, AccommodationNight, Workshop, Entity } from '@/lib/types';
+import type { Event, Visit, Workshop, Entity, Hotel, TransportMode } from '@/lib/types';
 import styles from './inscription.module.css';
 
 type Invitee = {
@@ -17,9 +17,9 @@ type Invitee = {
 type Props = {
   event: Event;
   visits: Visit[];
-  nights: AccommodationNight[];
   workshops: Workshop[];
   entities: Entity[];
+  hotels: Hotel[];
   visitsAvailability: Record<string, number>;
   prefill?: {
     email?: string;
@@ -37,11 +37,16 @@ type FormData = {
   entity: string;
   role: string;
   diet: string;
-  visitId: string | null;
-  noVisit: boolean;
-  nightIds: string[];
+  attends_thursday_morning: boolean;
+  attends_thursday_afternoon: boolean;
+  attends_thursday_evening: boolean;
+  attends_friday_morning: boolean;
+  attends_friday_afternoon: boolean;
+  thursdayVisitId: string | null;
+  fridayVisitId: string | null;
   workshopIds: string[];
-  busTransport: boolean;
+  hotelId: string | null;
+  transportMode: TransportMode | null;
 };
 
 const initialFormData: FormData = {
@@ -52,19 +57,80 @@ const initialFormData: FormData = {
   entity: '',
   role: '',
   diet: '',
-  visitId: null,
-  noVisit: false,
-  nightIds: [],
+  attends_thursday_morning: false,
+  attends_thursday_afternoon: false,
+  attends_thursday_evening: false,
+  attends_friday_morning: false,
+  attends_friday_afternoon: false,
+  thursdayVisitId: null,
+  fridayVisitId: null,
   workshopIds: [],
-  busTransport: false,
+  hotelId: null,
+  transportMode: null,
 };
+
+type VisitCardProps = {
+  visit: Visit;
+  isSelected: boolean;
+  remaining: number | null;
+  onClick: () => void;
+};
+
+function VisitCard({ visit, isSelected, remaining, onClick }: VisitCardProps) {
+  const [imgError, setImgError] = useState(false);
+  const isFull = remaining !== null && remaining <= 0;
+
+  return (
+    <div
+      className={`${styles.visitCard} ${isSelected ? styles.visitCardSelected : ''} ${isFull ? styles.visitCardDisabled : ''}`}
+      onClick={isFull ? undefined : onClick}
+    >
+      {imgError ? (
+        <div className={styles.visitImageFallback}>{visit.title}</div>
+      ) : (
+        <img
+          className={styles.visitImage}
+          src={`/visits/${visit.code}.jpg`}
+          alt={visit.title}
+          onError={() => setImgError(true)}
+        />
+      )}
+      <div className={styles.visitCardBody}>
+        <div className={styles.visitTitle}>{visit.title}</div>
+        {visit.description && (
+          <div className={styles.visitDesc}>{visit.description}</div>
+        )}
+        {remaining !== null && (
+          <div className={`${styles.visitCapacity} ${isFull ? styles.visitCapacityFull : ''}`}>
+            {isFull ? 'Complet' : `${remaining} places restantes`}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const PRESENCE_LABELS: Record<string, string> = {
+  attends_thursday_morning: 'Jeudi matin',
+  attends_thursday_afternoon: 'Jeudi après-midi',
+  attends_thursday_evening: 'Jeudi soir',
+  attends_friday_morning: 'Vendredi matin',
+  attends_friday_afternoon: 'Vendredi après-midi',
+};
+
+const TRANSPORT_OPTIONS: { value: TransportMode; label: string }[] = [
+  { value: 'train', label: 'Train' },
+  { value: 'plane', label: 'Avion' },
+  { value: 'car', label: 'Voiture personnelle' },
+  { value: 'public_or_walk', label: 'Transport en commun / à pied' },
+];
 
 export default function RegistrationForm({
   event,
   visits,
-  nights,
   workshops,
   entities,
+  hotels,
   visitsAvailability,
   prefill,
 }: Props) {
@@ -79,9 +145,82 @@ export default function RegistrationForm({
   const [inviteesError, setInviteesError] = useState<string | null>(null);
   const [selectedInviteeId, setSelectedInviteeId] = useState('');
   const [showHelpMessage, setShowHelpMessage] = useState(false);
+  const [step2Errors, setStep2Errors] = useState<{
+    presence?: string;
+    thursdayVisit?: string;
+    workshops?: string;
+    fridayVisit?: string;
+  }>({});
+  const [step3Errors, setStep3Errors] = useState<{
+    hotel?: string;
+    transport?: string;
+  }>({});
 
-  const update = <K extends keyof FormData>(key: K, value: FormData[K]) => {
+  const thursdayVisits = visits.filter((v) => v.slot_label === 'jeudi-aprem');
+  const fridayVisits = visits.filter((v) => v.slot_label === 'vendredi-aprem');
+  const fridayWorkshops = workshops.filter((w) => w.slot_label === 'vendredi-matin');
+
+  const visibleHotels = hotels
+    .filter((h) => h.code !== 'hotel-9-placeholder')
+    .sort((a, b) => {
+      if (a.is_undecided && !b.is_undecided) return -1;
+      if (!a.is_undecided && b.is_undecided) return 1;
+      return (a.display_order ?? 999) - (b.display_order ?? 999);
+    });
+
+  const getVisitTitle = (id: string) => visits.find((v) => v.id === id)?.title ?? '';
+  const getWorkshopTitle = (id: string) => workshops.find((w) => w.id === id)?.title ?? '';
+  const getHotelName = (id: string | null) => hotels.find((h) => h.id === id)?.title ?? '';
+  const getTransportLabel = (mode: TransportMode | null) =>
+    TRANSPORT_OPTIONS.find((o) => o.value === mode)?.label ?? '';
+
+  const update =<K extends keyof FormData>(key: K, value: FormData[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const validateStep1 = () => {
+    const errors: { invitee?: string; role?: string } = {};
+    if (!selectedInviteeId) {
+      errors.invitee = 'Merci de sélectionner votre nom dans la liste ci-dessus.';
+    }
+    if (!form.role.trim()) {
+      errors.role = "Merci d'indiquer votre fonction.";
+    }
+    return errors;
+  };
+
+  const validateStep2 = () => {
+    const errors: typeof step2Errors = {};
+    const anyPresence =
+      form.attends_thursday_morning ||
+      form.attends_thursday_afternoon ||
+      form.attends_thursday_evening ||
+      form.attends_friday_morning ||
+      form.attends_friday_afternoon;
+    if (!anyPresence) {
+      errors.presence = "Merci d'indiquer au moins un créneau de présence aux Rencontres.";
+    }
+    if (form.attends_thursday_afternoon && !form.thursdayVisitId) {
+      errors.thursdayVisit = 'Merci de choisir une visite pour le jeudi après-midi.';
+    }
+    if (form.attends_friday_morning && form.workshopIds.length !== 2) {
+      errors.workshops = 'Merci de sélectionner exactement 2 ateliers pour le vendredi matin.';
+    }
+    if (form.attends_friday_afternoon && !form.fridayVisitId) {
+      errors.fridayVisit = 'Merci de choisir une visite pour le vendredi après-midi.';
+    }
+    return errors;
+  };
+
+  const validateStep3 = () => {
+    const errors: typeof step3Errors = {};
+    if (!form.hotelId) {
+      errors.hotel = 'Merci de sélectionner un hôtel.';
+    }
+    if (!form.transportMode) {
+      errors.transport = "Merci d'indiquer votre mode de transport.";
+    }
+    return errors;
   };
 
   useEffect(() => {
@@ -101,6 +240,12 @@ export default function RegistrationForm({
         setInviteesLoading(false);
       });
   }, []);
+
+  useEffect(() => {
+    if (Object.keys(step2Errors).length > 0) setStep2Errors(validateStep2());
+    if (Object.keys(step3Errors).length > 0) setStep3Errors(validateStep3());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form]);
 
   const handleInviteeSelect = (id: string) => {
     setSelectedInviteeId(id);
@@ -130,28 +275,66 @@ export default function RegistrationForm({
     });
   };
 
-  const selectedVisit = visits.find((v) => v.id === form.visitId) || null;
-  const selectedNights = nights.filter((n) => form.nightIds.includes(n.id));
+  // TODO R3.3: remplacer par selectedThursdayVisit et selectedFridayVisit
+  // const selectedVisit = visits.find((v) => v.id === form.visitId) || null;
+  // TODO R3.4: supprimé, plus de nuitées
+  // const selectedNights = nights.filter((n) => form.nightIds.includes(n.id));
 
   const nextStep = (n: number) => {
     setError(null);
     if (n === 2) {
-      if (!selectedInviteeId) {
-        setError('Merci de sélectionner votre nom dans la liste ci-dessus.');
+      const errors = validateStep1();
+      if (errors.invitee) { setError(errors.invitee); return; }
+      if (errors.role) { setError(errors.role); return; }
+    }
+    if (n === 3) {
+      const errors = validateStep2();
+      if (Object.keys(errors).length > 0) {
+        setStep2Errors(errors);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
         return;
       }
+      setStep2Errors({});
     }
-    if (n === 3 && !form.visitId && !form.noVisit) {
-      setError('Merci de sélectionner une visite ou de cocher "Je ne participerai pas".');
-      return;
+    if (n === 4) {
+      const errors = validateStep3();
+      if (Object.keys(errors).length > 0) {
+        setStep3Errors(errors);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      setStep3Errors({});
     }
     setStep(n);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const submit = async () => {
-    setSubmitting(true);
     setError(null);
+
+    const s1Errors = validateStep1();
+    if (s1Errors.invitee || s1Errors.role) {
+      setError(s1Errors.invitee ?? s1Errors.role ?? '');
+      setStep(1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    const s2Errors = validateStep2();
+    if (Object.keys(s2Errors).length > 0) {
+      setStep2Errors(s2Errors);
+      setStep(2);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    const s3Errors = validateStep3();
+    if (Object.keys(s3Errors).length > 0) {
+      setStep3Errors(s3Errors);
+      setStep(3);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    setSubmitting(true);
     try {
       const res = await fetch('/api/register', {
         method: 'POST',
@@ -199,12 +382,15 @@ export default function RegistrationForm({
           {form.entity || '—'}
         </span>
       </div>
+      {/* TODO R3.5: row Visite à réécrire (thursdayVisitId + fridayVisitId)
       <div className={styles.summaryRow}>
         <span className={styles.summaryLabel}>Visite</span>
         <span className={`${styles.summaryValue} ${!selectedVisit && !form.noVisit ? styles.empty : ''}`}>
           {selectedVisit ? `${selectedVisit.title}` : form.noVisit ? 'Aucune' : '—'}
         </span>
       </div>
+      */}
+      {/* TODO R3.5: row Nuitées supprimé — remplacer par row Hôtel
       <div className={styles.summaryRow}>
         <span className={styles.summaryLabel}>Nuitées</span>
         <span className={`${styles.summaryValue} ${selectedNights.length === 0 ? styles.empty : ''}`}>
@@ -213,6 +399,7 @@ export default function RegistrationForm({
             : selectedNights.map((n) => n.night_date.slice(8, 10)).join(' & ') + ' oct.'}
         </span>
       </div>
+      */}
       <div className={styles.summaryDeadline}>
         Clôture des inscriptions le{' '}
         <strong>
@@ -278,12 +465,17 @@ export default function RegistrationForm({
                 </p>
               </div>
 
+              <p className={styles.requiredNotice}>
+                Les champs marqués d&apos;un <span className={styles.required}>*</span> sont
+                obligatoires.
+              </p>
+
               <form className={styles.form} onSubmit={(e) => e.preventDefault()}>
 
                 {/* Dropdown invité */}
                 <div className={`${styles.fieldGroup} ${styles.full}`}>
                   <div className={styles.field}>
-                    <label>Sélectionnez votre nom *</label>
+                    <label>Sélectionnez votre nom <span className={styles.required}>*</span></label>
                     <select
                       value={selectedInviteeId}
                       onChange={(e) => handleInviteeSelect(e.target.value)}
@@ -354,7 +546,7 @@ export default function RegistrationForm({
                 {/* Champs identité — verrouillés, préremplis par le dropdown */}
                 <div className={styles.fieldGroup}>
                   <div className={styles.field}>
-                    <label>Prénom</label>
+                    <label>Prénom <span className={styles.required}>*</span></label>
                     <input
                       type="text"
                       value={form.firstName}
@@ -363,7 +555,7 @@ export default function RegistrationForm({
                     />
                   </div>
                   <div className={styles.field}>
-                    <label>Nom</label>
+                    <label>Nom <span className={styles.required}>*</span></label>
                     <input
                       type="text"
                       value={form.lastName}
@@ -374,7 +566,7 @@ export default function RegistrationForm({
                 </div>
                 <div className={styles.fieldGroup}>
                   <div className={styles.field}>
-                    <label>Email professionnel</label>
+                    <label>Email professionnel <span className={styles.required}>*</span></label>
                     <input
                       type="email"
                       value={form.email}
@@ -383,7 +575,7 @@ export default function RegistrationForm({
                     />
                   </div>
                   <div className={styles.field}>
-                    <label>Téléphone</label>
+                    <label>Téléphone <span className={styles.required}>*</span></label>
                     <input
                       type="tel"
                       value={form.phone}
@@ -394,7 +586,7 @@ export default function RegistrationForm({
                 </div>
                 <div className={styles.fieldGroup}>
                   <div className={styles.field}>
-                    <label>Entité / Filiale</label>
+                    <label>Entité / Filiale <span className={styles.required}>*</span></label>
                     <input
                       type="text"
                       value={form.entity}
@@ -403,29 +595,14 @@ export default function RegistrationForm({
                     />
                   </div>
                   <div className={styles.field}>
-                    <label>Fonction</label>
+                    <label>Fonction <span className={styles.required}>*</span></label>
                     <input
                       type="text"
                       value={form.role}
                       onChange={(e) => update('role', e.target.value)}
                       placeholder="Votre poste actuel"
+                      required
                     />
-                  </div>
-                </div>
-                <div className={`${styles.fieldGroup} ${styles.full}`}>
-                  <div className={styles.field}>
-                    <label>Régime alimentaire (facultatif)</label>
-                    <select
-                      value={form.diet}
-                      onChange={(e) => update('diet', e.target.value)}
-                    >
-                      <option value="">Aucune restriction</option>
-                      <option>Végétarien</option>
-                      <option>Végétalien</option>
-                      <option>Sans gluten</option>
-                      <option>Sans porc</option>
-                      <option>Autre allergie / intolérance</option>
-                    </select>
                   </div>
                 </div>
               </form>
@@ -445,83 +622,184 @@ export default function RegistrationForm({
           </div>
         )}
 
-        {/* STEP 2 — Visites */}
+        {/* STEP 2 — Présence */}
         {step === 2 && (
           <div className={styles.stepPanel}>
             <div>
               <div className={styles.panelIntro}>
-                <h2>Choisissez votre visite lyonnaise.</h2>
+                <h2>Votre présence aux Rencontres.</h2>
                 <p>
-                  Le 7 octobre en fin de journée ou le 9 octobre matin, découvrez le
-                  patrimoine et les opérations emblématiques de la métropole. Une visite par
-                  participant.
+                  Indiquez les créneaux auxquels vous participerez. Ces informations nous
+                  permettent d&apos;organiser les visites et les ateliers.
                 </p>
               </div>
 
-              <div className={styles.cards}>
-                {visits.map((v) => {
-                  const remaining = visitsAvailability[v.id] ?? v.capacity;
-                  const isFull = remaining <= 0;
-                  const isSelected = form.visitId === v.id;
-                  return (
-                    <div
-                      key={v.id}
-                      className={`${styles.card} ${isSelected ? styles.cardSelected : ''} ${isFull ? styles.cardDisabled : ''}`}
-                      onClick={() => {
-                        if (isFull) return;
-                        update('visitId', isSelected ? null : v.id);
-                        update('noVisit', false);
-                      }}
-                    >
-                      <div className={styles.cardImage}>
-                        <Image
-                          src={`/visits/${v.code}.jpg`}
-                          alt={v.title}
-                          fill
-                          style={{ objectFit: 'cover' }}
-                          sizes="(max-width: 900px) calc(100vw - 48px), 350px"
-                        />
-                      </div>
-                      <div className={styles.cardBody}>
-                        <div className={styles.cardCheck}>
-                          <svg viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2">
-                            <path d="M2 6l3 3 5-6" />
-                          </svg>
-                        </div>
-                        <span className={styles.cardTag}>{v.slot_label}</span>
-                        <h3>{v.title}</h3>
-                        <div className={styles.cardMeta}>
-                          {isFull
-                            ? 'Complet'
-                            : `${remaining} place${remaining > 1 ? 's' : ''} restante${remaining > 1 ? 's' : ''} · ${v.capacity} max`}
-                        </div>
-                        {v.description && <p className={styles.cardDesc}>{v.description}</p>}
-                      </div>
-                    </div>
-                  );
-                })}
-                <div
-                  className={`${styles.card} ${form.noVisit ? styles.cardSelected : ''}`}
-                  onClick={() => {
-                    update('noVisit', !form.noVisit);
-                    update('visitId', null);
-                  }}
-                >
-                  <div className={styles.cardBody}>
-                    <div className={styles.cardCheck}>
-                      <svg viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2">
-                        <path d="M2 6l3 3 5-6" />
-                      </svg>
-                    </div>
-                    <span className={styles.cardTag}>Aucune</span>
-                    <h3>Je ne participerai pas aux visites</h3>
-                    <div className={styles.cardMeta}>—</div>
-                    <p className={styles.cardDesc}>
-                      Vous ne pourrez pas vous rendre disponible sur les créneaux proposés.
-                    </p>
+              <div className={styles.sessionList}>
+                <label className={`${styles.sessionItem} ${form.attends_thursday_morning ? styles.sessionItemChecked : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={form.attends_thursday_morning}
+                    onChange={(e) => update('attends_thursday_morning', e.target.checked)}
+                  />
+                  <div>
+                    <div className={styles.sessionLabel}>Jeudi 8 octobre — matin</div>
+                    <div className={styles.sessionDesc}>RAPMO + cocktail déjeunatoire au Sucre</div>
                   </div>
-                </div>
+                </label>
+
+                <label className={`${styles.sessionItem} ${form.attends_thursday_afternoon ? styles.sessionItemChecked : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={form.attends_thursday_afternoon}
+                    onChange={(e) => update('attends_thursday_afternoon', e.target.checked)}
+                  />
+                  <div>
+                    <div className={styles.sessionLabel}>Jeudi 8 octobre — après-midi</div>
+                    <div className={styles.sessionDesc}>Visites des sites CDC Habitat</div>
+                  </div>
+                </label>
+
+                <label className={`${styles.sessionItem} ${form.attends_thursday_evening ? styles.sessionItemChecked : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={form.attends_thursday_evening}
+                    onChange={(e) => update('attends_thursday_evening', e.target.checked)}
+                  />
+                  <div>
+                    <div className={styles.sessionLabel}>Jeudi 8 octobre — soir</div>
+                    <div className={styles.sessionDesc}>Dîner de gala au Selcius</div>
+                  </div>
+                </label>
+
+                <label className={`${styles.sessionItem} ${form.attends_friday_morning ? styles.sessionItemChecked : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={form.attends_friday_morning}
+                    onChange={(e) => update('attends_friday_morning', e.target.checked)}
+                  />
+                  <div>
+                    <div className={styles.sessionLabel}>Vendredi 9 octobre — matin</div>
+                    <div className={styles.sessionDesc}>Ateliers thématiques, plénière et cocktail</div>
+                  </div>
+                </label>
+
+                <label className={`${styles.sessionItem} ${form.attends_friday_afternoon ? styles.sessionItemChecked : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={form.attends_friday_afternoon}
+                    onChange={(e) => update('attends_friday_afternoon', e.target.checked)}
+                  />
+                  <div>
+                    <div className={styles.sessionLabel}>Vendredi 9 octobre — après-midi</div>
+                    <div className={styles.sessionDesc}>Visites culturelles à Lyon</div>
+                  </div>
+                </label>
               </div>
+
+              {step2Errors.presence && (
+                <p className={styles.errorMessage}>{step2Errors.presence}</p>
+              )}
+
+              {(form.attends_thursday_afternoon || form.attends_friday_morning || form.attends_friday_afternoon) && (
+                <div className={styles.choicesContainer}>
+                  <div className={styles.choicesTitle}>Vos choix de visites et d&apos;ateliers</div>
+                  {form.attends_thursday_afternoon && (
+                    <div className={styles.subSection}>
+                      <div className={styles.subSectionTitle}>
+                        Visites du jeudi après-midi <span>(1 à choisir)</span>
+                      </div>
+                      {step2Errors.thursdayVisit && (
+                        <p className={styles.errorMessage}>{step2Errors.thursdayVisit}</p>
+                      )}
+                      <div className={styles.visitGrid}>
+                        {thursdayVisits.map((v) => (
+                          <VisitCard
+                            key={v.id}
+                            visit={v}
+                            isSelected={form.thursdayVisitId === v.id}
+                            remaining={null}
+                            onClick={() =>
+                              update('thursdayVisitId', form.thursdayVisitId === v.id ? null : v.id)
+                            }
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {form.attends_friday_morning && (
+                    <div className={styles.subSection}>
+                      <div className={styles.subSectionTitle}>
+                        Ateliers du vendredi matin <span>(exactement 2 à choisir)</span>
+                      </div>
+                      <div className={styles.workshopCounter}>
+                        {form.workshopIds.length}/2 ateliers sélectionnés
+                      </div>
+                      {step2Errors.workshops && (
+                        <p className={styles.errorMessage}>{step2Errors.workshops}</p>
+                      )}
+                      <div className={styles.workshopList}>
+                        {fridayWorkshops.map((w) => {
+                          const isSelected = form.workshopIds.includes(w.id);
+                          const isDisabled = !isSelected && form.workshopIds.length >= 2;
+                          return (
+                            <label
+                              key={w.id}
+                              className={`${styles.workshopItem} ${isSelected ? styles.workshopItemSelected : ''} ${isDisabled ? styles.workshopItemDisabled : ''}`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {
+                                  if (isSelected) {
+                                    update('workshopIds', form.workshopIds.filter((id) => id !== w.id));
+                                  } else if (form.workshopIds.length < 2) {
+                                    update('workshopIds', [...form.workshopIds, w.id]);
+                                  }
+                                }}
+                              />
+                              <div>
+                                <div className={styles.visitTitle}>{w.title}</div>
+                                {w.description && <div className={styles.visitDesc}>{w.description}</div>}
+                                {w.speaker && <div className={styles.workshopSpeaker}>{w.speaker}</div>}
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {form.attends_friday_afternoon && (
+                    <div className={styles.subSection}>
+                      <div className={styles.subSectionTitle}>
+                        Visites du vendredi après-midi <span>(1 à choisir)</span>
+                      </div>
+                      {step2Errors.fridayVisit && (
+                        <p className={styles.errorMessage}>{step2Errors.fridayVisit}</p>
+                      )}
+                      <div className={styles.visitGrid}>
+                        {fridayVisits.map((v) => {
+                          const remaining = v.capacity < 999
+                            ? (visitsAvailability[v.id] ?? v.capacity)
+                            : null;
+                          return (
+                            <VisitCard
+                              key={v.id}
+                              visit={v}
+                              isSelected={form.fridayVisitId === v.id}
+                              remaining={remaining}
+                              onClick={() =>
+                                update('fridayVisitId', form.fridayVisitId === v.id ? null : v.id)
+                              }
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <SummaryAside />
@@ -543,71 +821,88 @@ export default function RegistrationForm({
           </div>
         )}
 
-        {/* STEP 3 — Nuitées + transport */}
+        {/* STEP 3 — Logistique */}
         {step === 3 && (
           <div className={styles.stepPanel}>
             <div>
               <div className={styles.panelIntro}>
-                <h2>Réservez vos nuitées.</h2>
+                <h2>Logistique.</h2>
                 <p>
-                  L'hébergement est pris en charge dans un hôtel partenaire de la métropole
-                  lyonnaise. Sélectionnez les nuits dont vous avez besoin.
+                  Indiquez vos préférences d&apos;hébergement et de transport afin que nous
+                  puissions organiser au mieux votre venue.
                 </p>
               </div>
 
-              <div className={styles.nights}>
-                {nights.map((n) => {
-                  const isSelected = form.nightIds.includes(n.id);
-                  return (
-                    <div
-                      key={n.id}
-                      className={`${styles.nightRow} ${isSelected ? styles.nightSelected : ''}`}
-                      onClick={() => {
-                        update(
-                          'nightIds',
-                          isSelected
-                            ? form.nightIds.filter((id) => id !== n.id)
-                            : [...form.nightIds, n.id]
-                        );
-                      }}
+              {/* Régime alimentaire */}
+              <div className={styles.logisticSection}>
+                <h3 className={styles.logisticSectionTitle}>Régime alimentaire</h3>
+                <p className={styles.fieldHelp}>
+                  Indiquez vos contraintes ou préférences (végétarien, vegan, allergies,
+                  intolérances…). Laissez vide si aucune.
+                </p>
+                <textarea
+                  className={styles.textareaField}
+                  value={form.diet}
+                  onChange={(e) => update('diet', e.target.value)}
+                  rows={3}
+                  placeholder="Ex. Végétarien, allergie aux fruits à coque"
+                />
+              </div>
+
+              {/* Hébergement */}
+              <div className={styles.logisticSection}>
+                <h3 className={styles.logisticSectionTitle}>Hébergement</h3>
+                <p className={styles.fieldHelp}>
+                  Indiquez l&apos;hôtel dans lequel vous avez réservé votre hébergement pour
+                  la nuit du jeudi 8 au vendredi 9 octobre. Cette information nous sert
+                  uniquement à la coordination logistique — chaque participant gère sa propre
+                  réservation.
+                </p>
+                <select
+                  className={styles.selectField}
+                  value={form.hotelId ?? ''}
+                  onChange={(e) => update('hotelId', e.target.value || null)}
+                >
+                  <option value="">— Sélectionnez un hôtel —</option>
+                  {visibleHotels.map((h) => (
+                    <option key={h.id} value={h.id}>
+                      {h.title}
+                    </option>
+                  ))}
+                </select>
+                {step3Errors.hotel && (
+                  <p className={styles.errorMessage}>{step3Errors.hotel}</p>
+                )}
+              </div>
+
+              {/* Mode de transport */}
+              <div className={styles.logisticSection}>
+                <h3 className={styles.logisticSectionTitle}>Mode de transport</h3>
+                <p className={styles.fieldHelp}>Comment comptez-vous rejoindre Lyon ?</p>
+                <div className={styles.sessionList}>
+                  {TRANSPORT_OPTIONS.map(({ value, label }) => (
+                    <label
+                      key={value}
+                      className={`${styles.sessionItem} ${
+                        form.transportMode === value ? styles.sessionItemChecked : ''
+                      }`}
                     >
-                      <div className={styles.nightInfo}>
-                        <div>
-                          <div className={styles.nightDay}>
-                            {formatDateFr(n.night_date).split(' ').slice(0, 1)[0]}
-                          </div>
-                          <div className={styles.nightDate}>
-                            {formatDateFr(n.night_date).split(' ').slice(1).join(' ')}
-                          </div>
-                        </div>
-                        {n.description && (
-                          <div className={styles.nightDetail}>{n.description}</div>
-                        )}
+                      <input
+                        type="radio"
+                        name="transportMode"
+                        value={value}
+                        checked={form.transportMode === value}
+                        onChange={() => update('transportMode', value)}
+                      />
+                      <div>
+                        <div className={styles.sessionLabel}>{label}</div>
                       </div>
-                      <div className={styles.nightToggle} />
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className={styles.busBox}>
-                <label className={styles.checkLine}>
-                  <input
-                    type="checkbox"
-                    checked={form.busTransport}
-                    onChange={(e) => update('busTransport', e.target.checked)}
-                  />
-                  <span>
-                    <strong>Transport en bus</strong> — Je souhaite emprunter le bus
-                    organisé depuis Lyon Part-Dieu vers le lieu du séminaire.
-                  </span>
-                </label>
-              </div>
-
-              <div className={styles.infoBox}>
-                <strong>À noter —</strong> Les frais d'hébergement et de transport sont pris
-                en charge par votre entité de rattachement. Les détails pratiques vous seront
-                communiqués 15 jours avant l'événement.
+                    </label>
+                  ))}
+                </div>
+                {step3Errors.transport && (
+                  <p className={styles.errorMessage}>{step3Errors.transport}</p>
+                )}
               </div>
             </div>
 
@@ -620,11 +915,171 @@ export default function RegistrationForm({
                 </svg>
                 Retour
               </button>
-              <button
-                className={styles.btnPrimary}
-                onClick={submit}
-                disabled={submitting}
-              >
+              <button className={styles.btnPrimary} onClick={() => nextStep(4)}>
+                Continuer
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M2 8h12M9 3l5 5-5 5" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 4 — Récapitulatif */}
+        {step === 4 && !reference && (
+          <div className={styles.stepPanel}>
+            <div>
+              <div className={styles.panelIntro}>
+                <h2>Vérifiez vos informations.</h2>
+                <p>
+                  Relisez votre inscription avant de la soumettre. Vous pouvez modifier
+                  chaque section en cliquant sur &quot;Modifier&quot;.
+                </p>
+              </div>
+
+              {/* Bloc Identité */}
+              <div className={styles.recapBlock}>
+                <div className={styles.recapBlockHeader}>
+                  <h3>Vos informations</h3>
+                  <button className={styles.recapEditButton} onClick={() => setStep(1)}>
+                    Modifier
+                  </button>
+                </div>
+                <div className={styles.recapRow}>
+                  <span className={styles.recapLabel}>Participant</span>
+                  <span className={styles.recapValue}>{fullName}</span>
+                </div>
+                {form.email && (
+                  <div className={styles.recapRow}>
+                    <span className={styles.recapLabel}>Email</span>
+                    <span className={styles.recapValue}>{form.email}</span>
+                  </div>
+                )}
+                {form.entity && (
+                  <div className={styles.recapRow}>
+                    <span className={styles.recapLabel}>Entité</span>
+                    <span className={styles.recapValue}>{form.entity}</span>
+                  </div>
+                )}
+                {form.role && (
+                  <div className={styles.recapRow}>
+                    <span className={styles.recapLabel}>Fonction</span>
+                    <span className={styles.recapValue}>{form.role}</span>
+                  </div>
+                )}
+                {form.phone && (
+                  <div className={styles.recapRow}>
+                    <span className={styles.recapLabel}>Téléphone</span>
+                    <span className={styles.recapValue}>{form.phone}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Bloc Présence */}
+              <div className={styles.recapBlock}>
+                <div className={styles.recapBlockHeader}>
+                  <h3>Votre présence aux Rencontres</h3>
+                  <button className={styles.recapEditButton} onClick={() => setStep(2)}>
+                    Modifier
+                  </button>
+                </div>
+                <div className={styles.recapSubSection}>
+                  <div className={styles.recapSubSectionTitle}>Créneaux de présence</div>
+                  <ul className={styles.recapList}>
+                    {(
+                      [
+                        [form.attends_thursday_morning, 'Jeudi matin'],
+                        [form.attends_thursday_afternoon, 'Jeudi après-midi'],
+                        [form.attends_thursday_evening, 'Jeudi soir'],
+                        [form.attends_friday_morning, 'Vendredi matin'],
+                        [form.attends_friday_afternoon, 'Vendredi après-midi'],
+                      ] as [boolean, string][]
+                    )
+                      .filter(([checked]) => checked)
+                      .map(([, label]) => <li key={label}>{label}</li>)}
+                  </ul>
+                </div>
+                {form.attends_thursday_afternoon && form.thursdayVisitId && (
+                  <div className={styles.recapSubSection}>
+                    <div className={styles.recapSubSectionTitle}>
+                      Visite du jeudi après-midi
+                    </div>
+                    <p className={styles.recapValue}>
+                      {getVisitTitle(form.thursdayVisitId)}
+                    </p>
+                  </div>
+                )}
+                {form.attends_friday_morning && form.workshopIds.length === 2 && (
+                  <div className={styles.recapSubSection}>
+                    <div className={styles.recapSubSectionTitle}>
+                      Ateliers du vendredi matin
+                    </div>
+                    <ul className={styles.recapList}>
+                      {form.workshopIds.map((id) => (
+                        <li key={id}>{getWorkshopTitle(id)}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {form.attends_friday_afternoon && form.fridayVisitId && (
+                  <div className={styles.recapSubSection}>
+                    <div className={styles.recapSubSectionTitle}>
+                      Visite du vendredi après-midi
+                    </div>
+                    <p className={styles.recapValue}>
+                      {getVisitTitle(form.fridayVisitId)}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Bloc Logistique */}
+              <div className={styles.recapBlock}>
+                <div className={styles.recapBlockHeader}>
+                  <h3>Logistique</h3>
+                  <button className={styles.recapEditButton} onClick={() => setStep(3)}>
+                    Modifier
+                  </button>
+                </div>
+                {form.diet && (
+                  <div className={styles.recapRow}>
+                    <span className={styles.recapLabel}>Régime alimentaire</span>
+                    <span className={styles.recapValue}>{form.diet}</span>
+                  </div>
+                )}
+                {form.hotelId && (
+                  <div className={styles.recapRow}>
+                    <span className={styles.recapLabel}>Hébergement</span>
+                    <span className={styles.recapValue}>{getHotelName(form.hotelId)}</span>
+                  </div>
+                )}
+                {form.transportMode && (
+                  <div className={styles.recapRow}>
+                    <span className={styles.recapLabel}>Transport</span>
+                    <span className={styles.recapValue}>
+                      {getTransportLabel(form.transportMode)}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <p className={styles.rgpdNotice}>
+                Vos données seront utilisées uniquement dans le cadre de l&apos;organisation
+                du séminaire RAPMO 2026 et conservées par CDC Habitat conformément au RGPD.
+                Pour toute question : rapmo.lyon@gmail.com.
+              </p>
+            </div>
+
+            <SummaryAside />
+
+            <div className={styles.nav}>
+              <button className={styles.btnGhost} onClick={() => setStep(3)}>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M14 8H2M7 3L2 8l5 5" />
+                </svg>
+                Retour
+              </button>
+              <button className={styles.btnPrimary} onClick={submit} disabled={submitting}>
                 {submitting ? 'Enregistrement…' : 'Valider mon inscription'}
                 {!submitting && (
                   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
@@ -658,27 +1113,6 @@ export default function RegistrationForm({
               <div className={styles.confirmRow}>
                 <span className={styles.confirmLabel}>Entité</span>
                 <span className={styles.confirmValue}>{form.entity}</span>
-              </div>
-              <div className={styles.confirmRow}>
-                <span className={styles.confirmLabel}>Visite</span>
-                <span className={styles.confirmValue}>
-                  {selectedVisit ? selectedVisit.title : 'Aucune'}
-                </span>
-              </div>
-              <div className={styles.confirmRow}>
-                <span className={styles.confirmLabel}>Nuitées</span>
-                <span className={styles.confirmValue}>
-                  {selectedNights.length === 0
-                    ? 'Aucune'
-                    : selectedNights
-                        .map((n) =>
-                          new Date(n.night_date).toLocaleDateString('fr-FR', {
-                            day: 'numeric',
-                            month: 'long',
-                          })
-                        )
-                        .join(' & ')}
-                </span>
               </div>
               <div className={styles.confirmRow}>
                 <span className={styles.confirmLabel}>Référence</span>

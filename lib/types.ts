@@ -37,8 +37,21 @@ export type Workshop = {
   capacity: number;
   is_active: boolean;
   display_order: number;
+  created_at: string;
 };
 
+export type Hotel = {
+  id: string;
+  event_id: string;
+  code: string;
+  title: string;
+  is_undecided: boolean;
+  display_order: number;
+  is_active: boolean;
+  created_at: string;
+};
+
+/** @deprecated supprimé du modèle RAPMO — remplacé par hotels + transport_mode */
 export type AccommodationNight = {
   id: string;
   event_id: string;
@@ -55,6 +68,8 @@ export type Entity = {
   is_active: boolean;
 };
 
+export type TransportMode = 'train' | 'plane' | 'car' | 'public_or_walk';
+
 export type Registration = {
   id: string;
   event_id: string;
@@ -66,8 +81,17 @@ export type Registration = {
   entity: string | null;
   role: string | null;
   diet: string | null;
+  /** @deprecated remplacé par registration_visits jointure */
   visit_id: string | null;
+  /** @deprecated remplacé par transport_mode */
   bus_transport: boolean;
+  hotel_id: string | null;
+  transport_mode: TransportMode | null;
+  attends_thursday_morning: boolean;
+  attends_thursday_afternoon: boolean;
+  attends_thursday_evening: boolean;
+  attends_friday_morning: boolean;
+  attends_friday_afternoon: boolean;
   status: 'confirmed' | 'cancelled' | 'waitlist';
   confirmation_email_sent_at: string | null;
   reminder_email_sent_at: string | null;
@@ -76,10 +100,19 @@ export type Registration = {
   updated_at: string;
 };
 
+export type RegistrationVisit = {
+  registration_id: string;
+  visit_id: string;
+  created_at: string;
+};
+
 export type RegistrationWithRelations = Registration & {
   visit: Visit | null;
+  /** @deprecated remplacé par registration_visits */
   nights: AccommodationNight[];
   workshops: Workshop[];
+  hotel?: Hotel | null;
+  registration_visits?: RegistrationVisit[];
 };
 
 export type Invitation = {

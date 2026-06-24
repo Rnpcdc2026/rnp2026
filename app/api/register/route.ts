@@ -2,189 +2,165 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendConfirmationEmail } from '@/lib/email';
 
-type RegisterPayload = {
-  eventId: string;
+interface RegisterPayload {
+  eventId?: string;
   firstName: string;
   lastName: string;
   email: string;
-  phone?: string;
+  phone: string;
   entity: string;
-  role?: string;
+  role: string;
   diet?: string;
-  visitId: string | null;
-  noVisit: boolean;
-  nightIds: string[];
+  hotelId: string;
+  transportMode: string;
+  attends_thursday_morning: boolean;
+  attends_thursday_afternoon: boolean;
+  attends_thursday_evening: boolean;
+  attends_friday_morning: boolean;
+  attends_friday_afternoon: boolean;
+  thursdayVisitId?: string;
+  fridayVisitId?: string;
   workshopIds: string[];
-  busTransport: boolean;
-};
+}
+
+function validatePayload(body: RegisterPayload): string | null {
+  if (!body.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) {
+    return 'Email manquant ou invalide.';
+  }
+  if (!body.firstName?.trim()) return 'Prénom manquant.';
+  if (!body.lastName?.trim()) return 'Nom manquant.';
+  if (!body.phone?.trim()) return 'Téléphone manquant.';
+  if (!body.entity?.trim()) return 'Entité manquante.';
+  if (!body.role?.trim()) return 'Fonction manquante.';
+  if (!['train', 'plane', 'car', 'public_or_walk'].includes(body.transportMode)) {
+    return 'Mode de transport invalide.';
+  }
+  if (!body.hotelId?.trim()) return 'Hôtel manquant.';
+  const anyPresence =
+    body.attends_thursday_morning ||
+    body.attends_thursday_afternoon ||
+    body.attends_thursday_evening ||
+    body.attends_friday_morning ||
+    body.attends_friday_afternoon;
+  if (!anyPresence) return "Merci d'indiquer au moins un créneau de présence.";
+  if (body.attends_thursday_afternoon && !body.thursdayVisitId?.trim()) {
+    return 'Visite du jeudi après-midi manquante.';
+  }
+  if (body.attends_friday_morning && (!body.workshopIds || body.workshopIds.length !== 2)) {
+    return 'Vous devez sélectionner exactement 2 ateliers.';
+  }
+  if (body.attends_friday_afternoon && !body.fridayVisitId?.trim()) {
+    return 'Visite du vendredi après-midi manquante.';
+  }
+  return null;
+}
 
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as RegisterPayload;
 
-    if (!body.firstName || !body.lastName || !body.email || !body.entity) {
-      return NextResponse.json(
-        { error: 'Champs obligatoires manquants.' },
-        { status: 400 }
-      );
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) {
-      return NextResponse.json({ error: 'Email invalide.' }, { status: 400 });
+    const validationError = validatePayload(body);
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 });
     }
 
     const supabase = createAdminClient();
 
-    const { data: event, error: evErr } = await supabase
+    const { data: event, error: eventError } = await supabase
       .from('events')
-      .select('*')
-      .eq('id', body.eventId)
+      .select('id')
+      .eq('slug', 'rapmo-2026')
       .single();
-    if (evErr || !event) {
-      return NextResponse.json({ error: 'Evenement introuvable.' }, { status: 404 });
-    }
-    if (!event.is_open) {
-      return NextResponse.json(
-        { error: 'Les inscriptions sont fermees.' },
-        { status: 403 }
-      );
-    }
-    if (new Date(event.registration_deadline) < new Date()) {
-      return NextResponse.json(
-        { error: 'La date limite d inscription est depassee.' },
-        { status: 403 }
-      );
+
+    if (eventError || !event) {
+      return NextResponse.json({ error: 'Événement introuvable.' }, { status: 500 });
     }
 
-    const { data: existing } = await supabase
-      .from('registrations')
-      .select('id, reference')
-      .eq('event_id', body.eventId)
-      .eq('email', body.email.toLowerCase())
-      .eq('status', 'confirmed')
-      .maybeSingle();
-    if (existing) {
-      return NextResponse.json(
-        {
-          error: 'Une inscription existe deja pour cet email (reference ' + existing.reference + '). Contactez l organisation pour la modifier.',
-        },
-        { status: 409 }
-      );
-    }
+    const { data: registrationId, error: rpcError } = await supabase.rpc(
+      'register_participant',
+      {
+        p_event_id: event.id,
+        p_email: body.email.trim().toLowerCase(),
+        p_first_name: body.firstName.trim(),
+        p_last_name: body.lastName.trim(),
+        p_phone: body.phone.trim(),
+        p_entity: body.entity.trim(),
+        p_role: body.role.trim(),
+        p_diet: body.diet?.trim() || null,
+        p_hotel_id: body.hotelId,
+        p_transport_mode: body.transportMode,
+        p_attends_thu_morning: body.attends_thursday_morning,
+        p_attends_thu_afternoon: body.attends_thursday_afternoon,
+        p_attends_thu_evening: body.attends_thursday_evening,
+        p_attends_fri_morning: body.attends_friday_morning,
+        p_attends_fri_afternoon: body.attends_friday_afternoon,
+        p_thursday_visit_id: body.thursdayVisitId || null,
+        p_friday_visit_id: body.fridayVisitId || null,
+        p_workshop_ids: body.workshopIds || [],
+      }
+    );
 
-    const { data: invitation } = await supabase
-      .from('invitations')
-      .select('registered')
-      .eq('event_id', body.eventId)
-      .eq('email', body.email.toLowerCase())
-      .maybeSingle();
-
-    if (!invitation) {
-      return NextResponse.json(
-        { error: "Cette adresse n'est pas autorisée. Si vous êtes invité(e), contactez rapmo.lyon@gmail.com." },
-        { status: 403 }
-      );
-    }
-
-    if (invitation.registered) {
-      return NextResponse.json(
-        { error: 'Vous êtes déjà inscrit(e). Pour modifier votre inscription, contactez rapmo.lyon@gmail.com.' },
-        { status: 409 }
-      );
-    }
-
-    if (body.visitId) {
-      const { data: visit } = await supabase
-        .from('visits')
-        .select('capacity')
-        .eq('id', body.visitId)
-        .single();
-      const { count: currentCount } = await supabase
-        .from('registrations')
-        .select('id', { count: 'exact', head: true })
-        .eq('visit_id', body.visitId)
-        .eq('status', 'confirmed');
-      if (visit && currentCount !== null && currentCount >= visit.capacity) {
+    if (rpcError) {
+      const { code } = rpcError;
+      if (code === 'P0001') {
         return NextResponse.json(
-          { error: 'Cette visite est complete. Merci d en choisir une autre.' },
+          {
+            error:
+              "Cette visite est complète. Veuillez retourner à l'étape précédente et choisir une autre visite.",
+          },
           { status: 409 }
         );
       }
-    }
-
-    const { data: refData } = await supabase.rpc('generate_registration_reference');
-    const reference = refData as unknown as string;
-
-    const { data: registration, error: regErr } = await supabase
-      .from('registrations')
-      .insert({
-        event_id: body.eventId,
-        reference,
-        first_name: body.firstName.trim(),
-        last_name: body.lastName.trim(),
-        email: body.email.toLowerCase().trim(),
-        phone: body.phone?.trim() || null,
-        entity: body.entity,
-        role: body.role?.trim() || null,
-        diet: body.diet || null,
-        visit_id: body.noVisit ? null : body.visitId,
-        bus_transport: body.busTransport,
-      })
-      .select()
-      .single();
-
-    if (regErr || !registration) {
-      console.error('Insertion error:', regErr);
+      if (code === 'P0002') {
+        return NextResponse.json(
+          {
+            error:
+              'Vous êtes déjà inscrit aux Rencontres. Pour toute modification, contactez rapmo.lyon@gmail.com.',
+            alreadyRegistered: true,
+          },
+          { status: 409 }
+        );
+      }
+      if (code === 'P0003') {
+        return NextResponse.json(
+          {
+            error:
+              "Votre email ne figure pas dans la liste des invités. Si c'est une erreur, contactez rapmo.lyon@gmail.com.",
+          },
+          { status: 403 }
+        );
+      }
+      console.error('RPC register_participant unexpected error:', rpcError);
       return NextResponse.json(
-        { error: 'Erreur lors de l enregistrement.' },
+        { error: 'Une erreur est survenue. Veuillez réessayer dans quelques instants.' },
         { status: 500 }
       );
     }
 
-    if (body.nightIds.length > 0) {
-      await supabase.from('registration_nights').insert(
-        body.nightIds.map((nightId) => ({
-          registration_id: registration.id,
-          night_id: nightId,
-        }))
+    const { data: reg, error: refError } = await supabase
+      .from('registrations')
+      .select('reference')
+      .eq('id', registrationId as string)
+      .single();
+
+    if (refError || !reg) {
+      return NextResponse.json(
+        { success: true, registrationId, reference: null },
+        { status: 201 }
       );
     }
 
-    if (body.workshopIds.length > 0) {
-      await supabase.from('registration_workshops').insert(
-        body.workshopIds.map((workshopId) => ({
-          registration_id: registration.id,
-          workshop_id: workshopId,
-        }))
-      );
-    }
+    sendConfirmationEmail({ registrationId: registrationId as string, eventId: event.id })
+      .catch(err => console.error('[EMAIL] sendConfirmationEmail failed:', err?.message));
 
-    const { error: invUpdateErr } = await supabase
-      .from('invitations')
-      .update({ registered: true })
-      .eq('event_id', body.eventId)
-      .eq('email', body.email.toLowerCase());
-    if (invUpdateErr) {
-      console.error('[REGISTER] Failed to update invitation registered flag:', invUpdateErr.message);
-    }
-
-    try {
-      await sendConfirmationEmail({
-        registrationId: registration.id,
-        eventId: body.eventId,
-      });
-    } catch (emailErr) {
-      console.error('[REGISTER] Email send failed:', emailErr);
-    }
-
-    return NextResponse.json({
-      success: true,
-      reference,
-      registrationId: registration.id,
-    });
+    return NextResponse.json(
+      { success: true, registrationId, reference: reg.reference },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Register route error:', error);
     return NextResponse.json(
-      { error: 'Erreur serveur. Merci de reessayer.' },
+      { error: 'Erreur serveur. Merci de réessayer.' },
       { status: 500 }
     );
   }

@@ -18,7 +18,6 @@ export default async function InscriptionPage({
 }) {
   const supabase = createClient();
 
-  // Charger l'événement actif
   const { data: event } = await supabase
     .from('events')
     .select('*')
@@ -29,41 +28,52 @@ export default async function InscriptionPage({
     notFound();
   }
 
-  // Charger les visites, nuitées, ateliers, entités
-  const [visitsRes, nightsRes, workshopsRes, entitiesRes, registrationsRes] =
+  const [visitsRes, workshopsRes, hotelsRes, entitiesRes, registrationVisitsRes] =
     await Promise.all([
-      supabase.from('visits').select('*').eq('event_id', event.id).order('slot_label'),
       supabase
-        .from('accommodation_nights')
+        .from('visits')
         .select('*')
         .eq('event_id', event.id)
-        .order('night_date'),
-      supabase.from('workshops').select('*').eq('event_id', event.id).order('title'),
-      supabase.from('entities').select('*').order('name'),
+        .eq('is_active', true)
+        .order('display_order'),
       supabase
-        .from('registrations')
-        .select('visit_id')
+        .from('workshops')
+        .select('*')
         .eq('event_id', event.id)
-        .not('visit_id', 'is', null),
+        .eq('is_active', true)
+        .order('display_order'),
+      supabase
+        .from('hotels')
+        .select('*')
+        .eq('event_id', event.id)
+        .eq('is_active', true)
+        .order('display_order'),
+      supabase.from('entities').select('*').order('name'),
+      supabase.from('registration_visits').select('visit_id'),
     ]);
 
-  // Calculer la disponibilité par visite
+  const visits = visitsRes.data ?? [];
+  const visitIdSet = new Set(visits.map((v) => v.id));
+
+  const occupancy = new Map<string, number>();
+  for (const rv of registrationVisitsRes.data ?? []) {
+    if (visitIdSet.has(rv.visit_id)) {
+      occupancy.set(rv.visit_id, (occupancy.get(rv.visit_id) ?? 0) + 1);
+    }
+  }
+
   const visitsAvailability: Record<string, number> = {};
-  const visits = visitsRes.data || [];
   visits.forEach((v) => {
-    const taken = (registrationsRes.data || []).filter(
-      (r) => r.visit_id === v.id
-    ).length;
-    visitsAvailability[v.id] = Math.max(0, v.capacity - taken);
+    visitsAvailability[v.id] = Math.max(0, v.capacity - (occupancy.get(v.id) ?? 0));
   });
 
   return (
     <RegistrationForm
       event={event}
       visits={visits}
-      nights={nightsRes.data || []}
-      workshops={workshopsRes.data || []}
-      entities={entitiesRes.data || []}
+      workshops={workshopsRes.data ?? []}
+      entities={entitiesRes.data ?? []}
+      hotels={hotelsRes.data ?? []}
       visitsAvailability={visitsAvailability}
       prefill={
         searchParams.email || searchParams.firstName
