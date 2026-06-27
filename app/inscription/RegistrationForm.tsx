@@ -416,10 +416,18 @@ export default function RegistrationForm({
         . Une confirmation vous sera envoyée par email.
       </div>
       <a
-        href="/acces"
+        href="/programme"
         target="_blank"
         rel="noopener noreferrer"
         className={styles.summaryAccessLink}
+      >
+        Voir le programme →
+      </a>
+      <a
+        href="/acces"
+        target="_blank"
+        rel="noopener noreferrer"
+        className={styles.summaryLink}
       >
         Voir le plan d&apos;accès →
       </a>

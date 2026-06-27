@@ -64,7 +64,7 @@ export async function middleware(request: NextRequest) {
     return supabaseAdminAuth(request);
   }
 
-  if (pathname === '/' || pathname.startsWith('/inscription')) {
+  if (pathname === '/' || pathname.startsWith('/inscription') || pathname.startsWith('/programme')) {
     return cookieAccessGuard(request);
   }
 
