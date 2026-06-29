@@ -150,8 +150,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    sendConfirmationEmail({ registrationId: registrationId as string, eventId: event.id })
-      .catch(err => console.error('[EMAIL] sendConfirmationEmail failed:', err?.message));
+    try {
+      await sendConfirmationEmail({ registrationId: registrationId as string, eventId: event.id });
+    } catch (err: any) {
+      console.error('[EMAIL] sendConfirmationEmail failed:', err?.message);
+    }
 
     return NextResponse.json(
       { success: true, registrationId, reference: reg.reference },
