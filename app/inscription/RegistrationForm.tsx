@@ -124,6 +124,14 @@ const TRANSPORT_OPTIONS: { value: TransportMode; label: string }[] = [
   { value: 'public_or_walk', label: 'Transport en commun / à pied' },
 ];
 
+// Normalise une chaîne pour la recherche (sans accents, minuscules)
+const normalizeStr = (s: string) =>
+  s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+// Affichage « NOM Prénom — Entité » (nom de famille en premier)
+const formatInviteeLabel = (inv: Invitee) =>
+  `${inv.last_name.toUpperCase()} ${inv.first_name} — ${inv.entity}`;
+
 export default function RegistrationForm({
   event,
   visits,
@@ -142,6 +150,8 @@ export default function RegistrationForm({
   const [inviteesLoading, setInviteesLoading] = useState(true);
   const [inviteesError, setInviteesError] = useState<string | null>(null);
   const [selectedInviteeId, setSelectedInviteeId] = useState('');
+  const [inviteeQuery, setInviteeQuery] = useState('');
+  const [inviteeOpen, setInviteeOpen] = useState(false);
   const [showHelpMessage, setShowHelpMessage] = useState(false);
   const [step2Errors, setStep2Errors] = useState<{
     presence?: string;
@@ -157,6 +167,21 @@ export default function RegistrationForm({
   const thursdayVisits = visits.filter((v) => v.slot_label === 'jeudi-aprem');
   const fridayVisits = visits.filter((v) => v.slot_label === 'vendredi-aprem');
   const fridayWorkshops = workshops.filter((w) => w.slot_label === 'vendredi-matin');
+
+  // Liste des invités triée par nom de famille puis prénom (Bloc D1)
+  const sortedInvitees = [...invitees].sort((a, b) => {
+    const byLast = a.last_name.localeCompare(b.last_name, 'fr');
+    return byLast !== 0 ? byLast : a.first_name.localeCompare(b.first_name, 'fr');
+  });
+
+  // Filtrage live selon la saisie (Bloc D2)
+  const filteredInvitees = inviteeQuery.trim()
+    ? sortedInvitees.filter((inv) =>
+        normalizeStr(`${inv.last_name} ${inv.first_name} ${inv.entity}`).includes(
+          normalizeStr(inviteeQuery)
+        )
+      )
+    : sortedInvitees;
 
   const visibleHotels = hotels
     .filter((h) => h.code !== 'hotel-9-placeholder')
@@ -472,24 +497,83 @@ export default function RegistrationForm({
                 <div className={`${styles.fieldGroup} ${styles.full}`}>
                   <div className={styles.field}>
                     <label>Sélectionnez votre nom <span className={styles.required}>*</span></label>
-                    <select
-                      value={selectedInviteeId}
-                      onChange={(e) => handleInviteeSelect(e.target.value)}
-                      disabled={inviteesLoading || !!inviteesError}
-                    >
-                      {inviteesLoading ? (
-                        <option value="" disabled>Chargement de la liste…</option>
-                      ) : (
-                        <>
-                          <option value="">— Sélectionnez votre nom —</option>
-                          {invitees.map((inv) => (
-                            <option key={inv.id} value={inv.id}>
-                              {inv.first_name} {inv.last_name} — {inv.entity}
-                            </option>
-                          ))}
-                        </>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="text"
+                        value={inviteeQuery}
+                        placeholder={
+                          inviteesLoading
+                            ? 'Chargement de la liste…'
+                            : 'Tapez votre nom (ex. DUR…)'
+                        }
+                        disabled={inviteesLoading || !!inviteesError}
+                        autoComplete="off"
+                        onFocus={() => setInviteeOpen(true)}
+                        onBlur={() => setTimeout(() => setInviteeOpen(false), 150)}
+                        onChange={(e) => {
+                          setInviteeQuery(e.target.value);
+                          setInviteeOpen(true);
+                          if (selectedInviteeId) handleInviteeSelect('');
+                        }}
+                      />
+                      {inviteeOpen && !inviteesLoading && !inviteesError && (
+                        <ul
+                          style={{
+                            position: 'absolute',
+                            top: 'calc(100% + 4px)',
+                            left: 0,
+                            right: 0,
+                            maxHeight: 260,
+                            overflowY: 'auto',
+                            margin: 0,
+                            padding: 4,
+                            listStyle: 'none',
+                            background: 'white',
+                            border: '1px solid #D6D8D9',
+                            borderRadius: 6,
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                            zIndex: 20,
+                          }}
+                        >
+                          {filteredInvitees.length === 0 ? (
+                            <li style={{ padding: '10px 12px', fontSize: 14, color: '#828485' }}>
+                              Aucun nom ne correspond à votre recherche.
+                            </li>
+                          ) : (
+                            filteredInvitees.map((inv) => {
+                              const isSel = inv.id === selectedInviteeId;
+                              return (
+                                <li
+                                  key={inv.id}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    handleInviteeSelect(inv.id);
+                                    setInviteeQuery(formatInviteeLabel(inv));
+                                    setInviteeOpen(false);
+                                  }}
+                                  style={{
+                                    padding: '10px 12px',
+                                    fontSize: 14,
+                                    cursor: 'pointer',
+                                    borderRadius: 4,
+                                    color: '#4C4C4B',
+                                    background: isSel ? '#fef4f5' : 'transparent',
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = '#f5f5f5';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = isSel ? '#fef4f5' : 'transparent';
+                                  }}
+                                >
+                                  {formatInviteeLabel(inv)}
+                                </li>
+                              );
+                            })
+                          )}
+                        </ul>
                       )}
-                    </select>
+                    </div>
 
                     {inviteesError && (
                       <p style={{ fontSize: 13, color: '#c0392b', marginTop: 6 }}>

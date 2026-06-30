@@ -130,6 +130,7 @@ export default function AccesPage() {
 
         {/* Plan d'accès */}
         <div className={styles.planSection}>
+          <p className={styles.address}>Le Sucre — 50 quai Rambaud, 69002 Lyon</p>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/docs/plan-acces.jpg"
@@ -139,6 +140,14 @@ export default function AccesPage() {
         </div>
 
         <div className={styles.actions}>
+          <a
+            href="https://www.google.com/maps/search/?api=1&query=Le%20Sucre%2C%2050%20quai%20Rambaud%2C%2069002%20Lyon"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.btnPrimary}
+          >
+            Ouvrir dans Google Maps
+          </a>
           <a href="/docs/plan-acces.pdf" download className={styles.btnPrimary}>
             Télécharger le plan (PDF)
           </a>

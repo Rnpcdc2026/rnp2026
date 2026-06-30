@@ -29,7 +29,6 @@ function validatePayload(body: RegisterPayload): string | null {
   }
   if (!body.firstName?.trim()) return 'Prénom manquant.';
   if (!body.lastName?.trim()) return 'Nom manquant.';
-  if (!body.phone?.trim()) return 'Téléphone manquant.';
   if (!body.entity?.trim()) return 'Entité manquante.';
   if (!body.role?.trim()) return 'Fonction manquante.';
   if (!['train', 'plane', 'car', 'public_or_walk'].includes(body.transportMode)) {
